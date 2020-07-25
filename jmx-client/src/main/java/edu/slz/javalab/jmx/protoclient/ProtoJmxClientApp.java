@@ -1,4 +1,4 @@
-package edu.slz.javalab;
+package edu.slz.javalab.jmx.protoclient;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,27 +11,95 @@ import javax.management.openmbean.CompositeDataSupport;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @SpringBootApplication
-public class JmxClientApp {
-  private static final Logger logger = LoggerFactory.getLogger(JmxClientApp.class);
+public class ProtoJmxClientApp {
+  private static final Logger logger = LoggerFactory.getLogger(ProtoJmxClientApp.class);
 
   public static void main(String[] args) {
-    ConfigurableApplicationContext appCtx = SpringApplication.run(JmxClientApp.class);
+    ConfigurableApplicationContext appCtx = SpringApplication.run(ProtoJmxClientApp.class);
     logger.debug("Started Spring AppCtx: {}", appCtx);
 
-    protoManualJmxClient();
-    protoReadMemoryAttributes();
-    protoInvokeMemoryOperationDirectly();
-    protoInvokeMemoryOperationUsingProxy();
+//    protoManualJmxClient();
+//    protoInvokeMemoryOperationDirectly();
+//    protoInvokeMemoryOperationUsingProxy();
+
+    protoMonitorMemory();
+
+    System.exit(0);
+  }
+
+  private static void protoMonitorMemory() {
+    try (JMXConnector jmxConn = ProtoJmxClientApp.getJmxConnector()) {
+      // Client is now connected to the MBean Server created by the JMX Agent, and can register MBeans and do operations
+      MBeanServerConnection mbsc = jmxConn.getMBeanServerConnection();
+      logger.info("Connected to MBeanServer");
+
+      // Get instance of the Memory MBean. Class: sun.management.MemoryImpl
+      ObjectName memoryBeanName = new ObjectName("java.lang:type=Memory");
+      ObjectInstance mBeanMemory = mbsc.getObjectInstance(memoryBeanName);
+      logger.info("Memory MBean: {}", mBeanMemory);
+
+      int i = 0;
+      String sampleTimestamp;
+      String memInit;
+      String memMax;
+      String memCommitted;
+      String memUsed;
+
+      try (BufferedWriter writer = Files.newBufferedWriter(Paths.get("logs", "output.csv"),
+          StandardCharsets.UTF_8, StandardOpenOption.APPEND, StandardOpenOption.CREATE)) {
+        while (i < 100) {
+          i += 1;
+
+          // Read attribute from an MBean
+          CompositeDataSupport attrMemUsage =
+              (CompositeDataSupport) mbsc.getAttribute(memoryBeanName, "HeapMemoryUsage");
+
+          sampleTimestamp = String.valueOf(Instant.now().toEpochMilli());
+          memInit = String.valueOf(attrMemUsage.get("init"));
+          memMax = String.valueOf(attrMemUsage.get("max"));
+          memCommitted = String.valueOf(attrMemUsage.get("committed"));
+          memUsed = String.valueOf(attrMemUsage.get("used"));
+
+          logger.info("Timestamp:       {}", sampleTimestamp);
+          logger.info("Memory initial:  {}", memInit);
+          logger.info("Memory maximum:  {}", memMax);
+          logger.info("Memory commited: {}", memCommitted);
+          logger.info("Memory used:     {}", memUsed);
+
+          writer.write(String.join(",", new String[] {
+              sampleTimestamp,
+              memInit,
+              memMax,
+              memCommitted,
+              memUsed}));
+
+          writer.newLine();
+          writer.flush();
+
+          Thread.sleep(5000L);
+        }
+      }
+    } catch (IOException | OperationsException | ReflectionException | MBeanException | InterruptedException e) {
+      logger.error("Error connecting to MBeanServer", e);
+    } catch (Exception ex) {
+      logger.error("Unknown error", ex);
+    }
   }
 
   private static void protoManualJmxClient() {
-    try (JMXConnector jmxConn = JmxClientApp.getJmxConnector()) {
+    try (JMXConnector jmxConn = ProtoJmxClientApp.getJmxConnector()) {
       // Client is now connected to the MBean Server created by the JMX Agent, and can register MBeans and do operations
       MBeanServerConnection mbsc = jmxConn.getMBeanServerConnection();
       logger.info("Connected to MBeanServer. Default domain: {}", mbsc.getDefaultDomain());
@@ -69,32 +137,8 @@ public class JmxClientApp {
     }
   }
 
-  private static void protoReadMemoryAttributes() {
-    try (JMXConnector jmxConn = JmxClientApp.getJmxConnector()) {
-      // Client is now connected to the MBean Server created by the JMX Agent, and can register MBeans and do operations
-      MBeanServerConnection mbsc = jmxConn.getMBeanServerConnection();
-      logger.info("Connected to MBeanServer");
-
-      // Get instance of the Memory MBean. Class: sun.management.MemoryImpl
-      ObjectName memoryBeanName = new ObjectName("java.lang:type=Memory");
-      ObjectInstance mBeanMemory = mbsc.getObjectInstance(memoryBeanName);
-      logger.info("Memory MBean: {}", mBeanMemory);
-
-      // Read attribute from an MBean
-      CompositeDataSupport attrMemUsage =
-          (CompositeDataSupport) mbsc.getAttribute(memoryBeanName, "HeapMemoryUsage");
-
-      logger.info("\nMemory initial:  {}", attrMemUsage.get("init"));
-      logger.info("\nMemory maximum:  {}", attrMemUsage.get("max"));
-      logger.info("\nMemory commited: {}", attrMemUsage.get("committed"));
-      logger.info("\nMemory used:     {}", attrMemUsage.get("used"));
-    } catch (IOException | OperationsException | ReflectionException | MBeanException e) {
-      logger.error("Error connecting to MBeanServer", e);
-    }
-  }
-
   private static void protoInvokeMemoryOperationDirectly() {
-    try (JMXConnector jmxConn = JmxClientApp.getJmxConnector()) {
+    try (JMXConnector jmxConn = ProtoJmxClientApp.getJmxConnector()) {
       // Client is now connected to the MBean Server created by the JMX Agent, and can register MBeans and do operations
       MBeanServerConnection mbsc = jmxConn.getMBeanServerConnection();
       logger.info("Connected to MBeanServer");
@@ -112,7 +156,7 @@ public class JmxClientApp {
   }
 
   private static void protoInvokeMemoryOperationUsingProxy() {
-    try (JMXConnector jmxConn = JmxClientApp.getJmxConnector()) {
+    try (JMXConnector jmxConn = ProtoJmxClientApp.getJmxConnector()) {
       // Client is now connected to the MBean Server created by the JMX Agent, and can register MBeans and do operations
       MBeanServerConnection mbsc = jmxConn.getMBeanServerConnection();
       logger.info("Connected to MBeanServer");
@@ -130,10 +174,6 @@ public class JmxClientApp {
     }
   }
 
-  private static void protoJ256JmxClient() {
-    // TODO: Implement
-  }
-
   private static JMXServiceURL buildJmxServiceUrl() {
     String hostName = "localhost";
     int portNum = 1099;
@@ -148,7 +188,7 @@ public class JmxClientApp {
   }
 
   private static JMXConnector getJmxConnector() throws IOException {
-    JMXServiceURL jmxSrvUrl = JmxClientApp.buildJmxServiceUrl();
+    JMXServiceURL jmxSrvUrl = ProtoJmxClientApp.buildJmxServiceUrl();
 
     Map<String, Object> jmxEnv = new HashMap<>();
     jmxEnv.put("com.sun.management.jmxremote.authenticate", false);
