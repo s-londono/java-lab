@@ -1,0 +1,5 @@
+jmxmonitor:
+  jmxremoteAuthenticate: false
+  jmxremoteSslEnabled: false
+  jmxremoteSslNeedClientAuth: false
+  jmxremoteRegistrySsl: false

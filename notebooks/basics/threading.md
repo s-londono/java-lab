@@ -9,8 +9,8 @@ uncaught at least gets properly logged. According to the Javadocs:
 > threads that would already accept whatever "default" behavior the system provided. 
 
 Shutdown Hooks can also come handy. These are threads that get executed when the application starts to shut down.
-Note how by using join, we can pause the Shutdown Hook and wait for the Main thread to terminate. This is useful to 
-detect cases where the application hung while terminating.  
+Note how invoking join on the main thread delays the termination of the JVM for the specified number of milliseconds. 
+This is because the main thread won't die until all Shutdown Hooks have finished.
 
 ```java
 public static void main(String[] args) {
@@ -27,6 +27,7 @@ public static void main(String[] args) {
       logger.info("JmxMonitor shutting down...");
 
       try {
+        // This causes termination of the JVM to be delayed by 15 seconds!
         mainThread.join(15000L);
       } catch (InterruptedException e) {
         logger.warn("MainThread taking too long to terminate");
