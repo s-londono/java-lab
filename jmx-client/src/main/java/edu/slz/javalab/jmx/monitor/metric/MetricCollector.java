@@ -1,16 +1,22 @@
-package edu.slz.javalab.jmx.monitor;
+package edu.slz.javalab.jmx.monitor.metric;
 
+import edu.slz.javalab.jmx.monitor.JmxConnManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import sun.font.EAttribute;
 
 import javax.annotation.PostConstruct;
 import javax.management.*;
 import javax.management.remote.JMXConnector;
+import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -61,20 +67,26 @@ public class MetricCollector {
           .map(ObjectName::getCanonicalName).sorted().collect(Collectors.toList());
       logger.info("Hazelcast Map MBeans found: {}", allMBeanNames.size());
 
-      // Read attributes of interest from each IMap MBean
-      for (String mBeanName : allMBeanNames) {
-        ObjectName objIMapMBeanName = new ObjectName(mBeanName);
-        ObjectInstance iMapMBean = mbsc.getObjectInstance(objIMapMBeanName);
-        logger.debug("Reading metrics from IMap MBean: {}...", mBeanName);
-
-        List<Object> readIMapMetrics = readIMapMetrics(mbsc, mBeanName);
-        logger.debug("IMap MBean {}. Metrics: {}...", mBeanName, readIMapMetrics.size());
+      try (BufferedWriter resWriter = openResultsWriter()) {
+        allMBeanObjectNames.stream()
+          .sorted(ObjectName::compareTo)
+          .forEach(objectName -> {
+            MBeanMetricReader mReader = new HzIMapMetricReader();
+            List<AttributeMetric<?>> metricsRead = mReader.read(mbsc, objectName);
+            logger.info("IMap MBean {}. Metrics: {}...", objectName, metricsRead.size());
+          });
       }
-    } catch (IOException | MalformedObjectNameException | InstanceNotFoundException e) {
+    } catch (IOException | MalformedObjectNameException e) {
       logger.error("IOError on JMX connection", e);
     }
   }
 
+  /**
+   * Reads the values of all attributes of interest about Hazelcast Maps and returns them in a list
+   * @param mbsc MBeanServerConnection to connect to the MBean
+   * @param mBeanName Name of the MBean containin the attributes to be read
+   * @return List of values of attribute of interest in the IMap MBean
+   */
   private List<Object> readIMapMetrics(MBeanServerConnection mbsc, String mBeanName) {
     List<Object> metricValues = new ArrayList<>(mBeanMetrics.size());
 
@@ -90,6 +102,21 @@ public class MetricCollector {
     return metricValues;
   }
 
+  /**
+   * Opens a properly configured writer to the results CSV file
+   * @return BufferedWriter for the results file
+   */
+  private BufferedWriter openResultsWriter() throws IOException {
+    Path resDir = Paths.get("logs");
+    Files.createDirectories(resDir);
+
+    return Files.newBufferedWriter(resDir.resolve("hz-map-metrics.csv"), StandardCharsets.UTF_8,
+      StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+  }
+
+  /**
+   * An MBean attribute to be read and which provides the value of a metric
+   */
   private class MBeanMetric {
     public String header;
     public String attributeName;
