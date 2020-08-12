@@ -21,6 +21,7 @@ public class HzIMapMetricReader implements MBeanMetricReader {
    * @param mBeanName Name of the MBean from which the metrics are to be extracted
    * @return List of metrics read, with their values obtained from the corresponding MBean attributes
    */
+  @Override
   public List<AttributeMetric<?>> read(MBeanServerConnection mbsc, ObjectName mBeanName) {
     List<AttributeMetric<?>> attributeMetrics = buildMetricsToRead();
 

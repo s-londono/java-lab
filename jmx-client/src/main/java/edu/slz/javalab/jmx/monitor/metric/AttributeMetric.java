@@ -5,11 +5,11 @@ package edu.slz.javalab.jmx.monitor.metric;
  */
 class AttributeMetric<T> {
 
-  private String name;
+  private final String name;
 
-  private String attributeName;
+  private final String attributeName;
 
-  private Class<T> attributeClass;
+  private final Class<T> attributeClass;
 
   private T value;
 

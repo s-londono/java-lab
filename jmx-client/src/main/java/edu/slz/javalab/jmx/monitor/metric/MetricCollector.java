@@ -8,7 +8,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
-import javax.management.*;
+import javax.management.MBeanServerConnection;
+import javax.management.MalformedObjectNameException;
+import javax.management.ObjectName;
 import javax.management.remote.JMXConnector;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -17,34 +19,32 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
+import java.time.Instant;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Component
 public class MetricCollector {
   private final static Logger logger = LoggerFactory.getLogger(MetricCollector.class);
 
+  private static final String COLUMN_SEPARATOR = ",";
+
+  private static final int DEFAULT_PORT = 1591;
+
   private final JmxConnManager jmxConnMngr;
 
-  private final List<MBeanMetric> mBeanMetrics;
+  private final List<String> targets;
+
 
   @Autowired
   public MetricCollector(JmxConnManager jmxConnMngr) {
     this.jmxConnMngr = jmxConnMngr;
-    this.mBeanMetrics = Arrays.asList(
-        new MBeanMetric("MapName", "name"),
-        new MBeanMetric("LocalHeapCost", "localHeapCost"),
-        new MBeanMetric("LocalOwnedEntryMemoryCost", "localOwnedEntryMemoryCost"),
-        new MBeanMetric("LocalBackupEntryMemoryCost", "localBackupEntryMemoryCost"),
-        new MBeanMetric("Size", "size"),
-        new MBeanMetric("LocalBackupEntryCount", "localBackupEntryCount"),
-        new MBeanMetric("LocalDirtyEntryCount", "localDirtyEntryCount"),
-        new MBeanMetric("LocalBackupCount", "localBackupCount"),
-        new MBeanMetric("LocalOwnedEntryCount", "localOwnedEntryCount")
+
+    this.targets = Arrays.asList(
+      "localhost"
     );
+
+    this.targetPort = 1099;
   }
 
   @PostConstruct
@@ -54,52 +54,54 @@ public class MetricCollector {
 
   @Scheduled(fixedRate = 30000L)
   public void collect() {
-    try (JMXConnector jmxConn = jmxConnMngr.connectToRemote("127.0.0.1", 1099)) {
+    String target = "127.0.0.1:1099";
+    String[] targetComponents = target.split(":");
+
+    String targetHost = targetComponents[0];
+    int targetPort = (targetComponents.length > 1) ? Integer.parseInt(targetComponents[1]) : DEFAULT_PORT;
+
+    try (JMXConnector jmxConn = jmxConnMngr.connectToRemote(targetHost, targetPort)) {
       // Client is now connected to the MBean Server created by the JMX Agent, and can register MBeans and do operations
       MBeanServerConnection mbsc = jmxConn.getMBeanServerConnection();
+
       logger.info("Connected to MBeanServer. ConnId: {}", jmxConn.getConnectionId());
 
       // Search all Hazelcast Map MBeans on the Server
       ObjectName hzMapBeanNamePattern = new ObjectName("com.hazelcast:instance=*,type=IMap,*");
       Set<ObjectName> allMBeanObjectNames = mbsc.queryNames(hzMapBeanNamePattern, null);
 
-      List<String> allMBeanNames = allMBeanObjectNames.stream()
-          .map(ObjectName::getCanonicalName).sorted().collect(Collectors.toList());
-      logger.info("Hazelcast Map MBeans found: {}", allMBeanNames.size());
+      List<ObjectName> sortedMBeanObjectNames =
+        Optional.of(allMBeanObjectNames).orElse(Collections.emptySet()).stream()
+          .sorted(Comparator.comparing(ObjectName::getCanonicalName))
+          .collect(Collectors.toList());
 
       try (BufferedWriter resWriter = openResultsWriter()) {
-        allMBeanObjectNames.stream()
-          .sorted(ObjectName::compareTo)
-          .forEach(objectName -> {
-            MBeanMetricReader mReader = new HzIMapMetricReader();
-            List<AttributeMetric<?>> metricsRead = mReader.read(mbsc, objectName);
-            logger.info("IMap MBean {}. Metrics: {}...", objectName, metricsRead.size());
-          });
+        boolean headerWritten = false;
+
+        for (ObjectName mBeanObjName : sortedMBeanObjectNames) {
+          logger.debug("IMap MBean {}. Reading Metrics...", mBeanObjName);
+
+          MBeanMetricReader mReader = new HzIMapMetricReader();
+          List<AttributeMetric<?>> metricsRead = mReader.read(mbsc, mBeanObjName);
+
+          if (metricsRead == null || metricsRead.size() == 0) {
+            logger.warn("IMap MBean {}. Ignored empty Metrics: {}", mBeanObjName, metricsRead);
+            continue;
+          }
+
+          if (!headerWritten) {
+            writeResultsHeaderRow(resWriter, metricsRead);
+            headerWritten = true;
+          }
+
+          writeResultsRow(resWriter, metricsRead, "Node", "");
+
+          logger.info("IMap MBean {}. Metrics read: {}", mBeanObjName, metricsRead.size());
+        }
       }
     } catch (IOException | MalformedObjectNameException e) {
       logger.error("IOError on JMX connection", e);
     }
-  }
-
-  /**
-   * Reads the values of all attributes of interest about Hazelcast Maps and returns them in a list
-   * @param mbsc MBeanServerConnection to connect to the MBean
-   * @param mBeanName Name of the MBean containin the attributes to be read
-   * @return List of values of attribute of interest in the IMap MBean
-   */
-  private List<Object> readIMapMetrics(MBeanServerConnection mbsc, String mBeanName) {
-    List<Object> metricValues = new ArrayList<>(mBeanMetrics.size());
-
-    for (MBeanMetric metric : mBeanMetrics) {
-      try {
-        ObjectName objIMapMBeanName = new ObjectName(mBeanName);
-        metricValues.add(mbsc.getAttribute(objIMapMBeanName, metric.attributeName));
-      } catch (IOException | OperationsException | MBeanException | ReflectionException e) {
-        throw new RuntimeException("Error reading attribute " + metric.attributeName + " of " + mBeanName, e);
-      }
-    }
-
-    return metricValues;
   }
 
   /**
@@ -115,15 +117,54 @@ public class MetricCollector {
   }
 
   /**
-   * An MBean attribute to be read and which provides the value of a metric
+   * Writes the headers row into the specified results file writer
+   * @param writer The headers row will be written into this file writer
+   * @param metrics List of metrics corresponding to a results record
    */
-  private class MBeanMetric {
-    public String header;
-    public String attributeName;
+  private void writeResultsHeaderRow(BufferedWriter writer, List<AttributeMetric<?>> metrics) {
+    Objects.requireNonNull(metrics);
 
-    public MBeanMetric(String header, String attributeName) {
-      this.header = header;
-      this.attributeName = attributeName;
+    try {
+      writer.write("Time" + COLUMN_SEPARATOR);
+      writer.write("Node" + COLUMN_SEPARATOR);
+      writer.write("Type" + COLUMN_SEPARATOR);
+
+      for (AttributeMetric<?> metric : metrics) {
+        writer.write(metric.getName() + COLUMN_SEPARATOR);
+      }
+
+      writer.newLine();
+    } catch (IOException e) {
+      throw new RuntimeException("Error writing results file header", e);
     }
   }
+
+  /**
+   * Writes a row of metric records into the results file
+   * @param writer The headers row will be written into this file writer
+   * @param metrics List of metrics corresponding to the results record to be written
+   * @param node ID of the node the metrics were measured at
+   * @param type Type of metrics recorded (usually part of the name of the MBean)
+   */
+  private void writeResultsRow(BufferedWriter writer, List<AttributeMetric<?>> metrics, String node, String type) {
+    Objects.requireNonNull(metrics);
+
+    Long timestamp = Instant.now().toEpochMilli();
+
+    try {
+      writer.write(timestamp + COLUMN_SEPARATOR);
+      writer.write(node + COLUMN_SEPARATOR);
+      writer.write(type + COLUMN_SEPARATOR);
+
+      for (AttributeMetric<?> metric : metrics) {
+        String valMark = String.class.equals(metric.getAttributeClass()) ? "\"" : "";
+        writer.write(valMark + metric.getValue() + valMark + COLUMN_SEPARATOR);
+      }
+
+      writer.newLine();
+    } catch (IOException e) {
+      throw new RuntimeException("Error writing results file header", e);
+    }
+  }
+
 }
