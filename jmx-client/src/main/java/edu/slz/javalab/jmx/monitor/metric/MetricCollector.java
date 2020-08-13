@@ -9,8 +9,6 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
 import javax.management.MBeanServerConnection;
-import javax.management.MalformedObjectNameException;
-import javax.management.ObjectName;
 import javax.management.remote.JMXConnector;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -19,9 +17,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.time.Instant;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
 
 @Component
 public class MetricCollector {
@@ -43,8 +41,6 @@ public class MetricCollector {
     this.targets = Arrays.asList(
       "localhost"
     );
-
-    this.targetPort = 1099;
   }
 
   @PostConstruct
@@ -66,40 +62,25 @@ public class MetricCollector {
 
       logger.info("Connected to MBeanServer. ConnId: {}", jmxConn.getConnectionId());
 
-      // Search all Hazelcast Map MBeans on the Server
-      ObjectName hzMapBeanNamePattern = new ObjectName("com.hazelcast:instance=*,type=IMap,*");
-      Set<ObjectName> allMBeanObjectNames = mbsc.queryNames(hzMapBeanNamePattern, null);
-
-      List<ObjectName> sortedMBeanObjectNames =
-        Optional.of(allMBeanObjectNames).orElse(Collections.emptySet()).stream()
-          .sorted(Comparator.comparing(ObjectName::getCanonicalName))
-          .collect(Collectors.toList());
-
       try (BufferedWriter resWriter = openResultsWriter()) {
-        boolean headerWritten = false;
+        logger.debug("Reading IMap Metrics...");
 
-        for (ObjectName mBeanObjName : sortedMBeanObjectNames) {
-          logger.debug("IMap MBean {}. Reading Metrics...", mBeanObjName);
+        MBeanMetricReader mReader = new HzIMapMetricReader();
+        List<MBeanRecord> metricsRead = mReader.read(mbsc);
 
-          MBeanMetricReader mReader = new HzIMapMetricReader();
-          List<AttributeMetric<?>> metricsRead = mReader.read(mbsc, mBeanObjName);
+        if (metricsRead == null || metricsRead.size() == 0) {
+          logger.warn("IMap MBean. Ignored empty Metrics: {}", metricsRead);
+        }
+        else {
+          writeResultsHeaderRow(resWriter, metricsRead.get(0));
 
-          if (metricsRead == null || metricsRead.size() == 0) {
-            logger.warn("IMap MBean {}. Ignored empty Metrics: {}", mBeanObjName, metricsRead);
-            continue;
-          }
+          metricsRead.forEach(mBeanRecord ->
+            writeResultsRow(resWriter, mBeanRecord, "Node", "IMap"));
 
-          if (!headerWritten) {
-            writeResultsHeaderRow(resWriter, metricsRead);
-            headerWritten = true;
-          }
-
-          writeResultsRow(resWriter, metricsRead, "Node", "");
-
-          logger.info("IMap MBean {}. Metrics read: {}", mBeanObjName, metricsRead.size());
+          logger.info("IMap MBean. Metrics read: {}", metricsRead.size());
         }
       }
-    } catch (IOException | MalformedObjectNameException e) {
+    } catch (IOException e) {
       logger.error("IOError on JMX connection", e);
     }
   }
@@ -119,17 +100,18 @@ public class MetricCollector {
   /**
    * Writes the headers row into the specified results file writer
    * @param writer The headers row will be written into this file writer
-   * @param metrics List of metrics corresponding to a results record
+   * @param mBeanRecord A metrics record measured on a specific MBean
    */
-  private void writeResultsHeaderRow(BufferedWriter writer, List<AttributeMetric<?>> metrics) {
-    Objects.requireNonNull(metrics);
+  private void writeResultsHeaderRow(BufferedWriter writer, MBeanRecord mBeanRecord) {
+    Objects.requireNonNull(mBeanRecord);
+    Objects.requireNonNull(mBeanRecord.getAttributeMetrics());
 
     try {
       writer.write("Time" + COLUMN_SEPARATOR);
       writer.write("Node" + COLUMN_SEPARATOR);
       writer.write("Type" + COLUMN_SEPARATOR);
 
-      for (AttributeMetric<?> metric : metrics) {
+      for (AttributeMetric<?> metric : mBeanRecord.getAttributeMetrics()) {
         writer.write(metric.getName() + COLUMN_SEPARATOR);
       }
 
@@ -142,21 +124,20 @@ public class MetricCollector {
   /**
    * Writes a row of metric records into the results file
    * @param writer The headers row will be written into this file writer
-   * @param metrics List of metrics corresponding to the results record to be written
+   * @param mBeanRecord A metrics record to be written, measured on a specific MBean
    * @param node ID of the node the metrics were measured at
    * @param type Type of metrics recorded (usually part of the name of the MBean)
    */
-  private void writeResultsRow(BufferedWriter writer, List<AttributeMetric<?>> metrics, String node, String type) {
-    Objects.requireNonNull(metrics);
-
-    Long timestamp = Instant.now().toEpochMilli();
+  private void writeResultsRow(BufferedWriter writer, MBeanRecord mBeanRecord, String node, String type) {
+    Objects.requireNonNull(mBeanRecord);
+    Objects.requireNonNull(mBeanRecord.getAttributeMetrics());
 
     try {
-      writer.write(timestamp + COLUMN_SEPARATOR);
+      writer.write(mBeanRecord.getTimestamp() + COLUMN_SEPARATOR);
       writer.write(node + COLUMN_SEPARATOR);
       writer.write(type + COLUMN_SEPARATOR);
 
-      for (AttributeMetric<?> metric : metrics) {
+      for (AttributeMetric<?> metric : mBeanRecord.getAttributeMetrics()) {
         String valMark = String.class.equals(metric.getAttributeClass()) ? "\"" : "";
         writer.write(valMark + metric.getValue() + valMark + COLUMN_SEPARATOR);
       }

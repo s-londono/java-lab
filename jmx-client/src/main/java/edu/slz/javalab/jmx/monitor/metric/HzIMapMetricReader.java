@@ -4,10 +4,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.management.MBeanServerConnection;
+import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Defines the set of metrics that are to be read from MBeans corresponding to Hazelcast Maps
@@ -18,24 +20,47 @@ public class HzIMapMetricReader implements MBeanMetricReader {
   /**
    * Reads metrics from the MBean having the specified name
    * @param mbsc MBeanServerConnection to the JMX process from which the metrics are to be read
-   * @param mBeanName Name of the MBean from which the metrics are to be extracted
    * @return List of metrics read, with their values obtained from the corresponding MBean attributes
    */
   @Override
-  public List<AttributeMetric<?>> read(MBeanServerConnection mbsc, ObjectName mBeanName) {
-    List<AttributeMetric<?>> attributeMetrics = buildMetricsToRead();
+  public List<MBeanRecord> read(MBeanServerConnection mbsc) {
+    List<MBeanRecord> resultsMatrix = new ArrayList<>();
+
+    // Search all Hazelcast Map MBeans on the Server
+    Set<ObjectName> allMBeanObjectNames;
+
+    try {
+      ObjectName hzMapBeanNamePattern = new ObjectName("com.hazelcast:instance=*,type=IMap,*");
+      allMBeanObjectNames = mbsc.queryNames(hzMapBeanNamePattern, null);
+    } catch (MalformedObjectNameException | IOException e) {
+      throw new RuntimeException("Error reading IMap MBeanObjects", e);
+    }
+
+    List<ObjectName> sortedMBeanObjectNames =
+      Optional.of(allMBeanObjectNames).orElse(Collections.emptySet()).stream()
+        .sorted(Comparator.comparing(ObjectName::getCanonicalName))
+        .collect(Collectors.toList());
+
+    for (ObjectName mBeanObjName : sortedMBeanObjectNames) {
+      List<AttributeMetric<?>> attributeMetrics = buildMetricsToRead();
+      long samplingStartedAt = Instant.now().toEpochMilli();
+
+      logger.debug("IMap MBean {}. Reading Metrics. At: {}...", mBeanObjName, samplingStartedAt);
 
       attributeMetrics.forEach(attribMetric -> {
         String attribName = attribMetric.getAttributeName();
 
         try {
-          attribMetric.castAndSetValue(mbsc.getAttribute(mBeanName, attribName));
+          attribMetric.castAndSetValue(mbsc.getAttribute(mBeanObjName, attribName));
         } catch (Exception e) {
-          logger.error("Error reading AttributeMetric {} from {}", attribName, mBeanName, e);
+          logger.warn("Failed to read Attribute: {} of: {}", attribName, mBeanObjName);
         }
       });
 
-    return attributeMetrics;
+      resultsMatrix.add(new MBeanRecord(mBeanObjName.getCanonicalName(), samplingStartedAt, attributeMetrics));
+    }
+
+    return resultsMatrix;
   }
 
   private List<AttributeMetric<?>> buildMetricsToRead() {
