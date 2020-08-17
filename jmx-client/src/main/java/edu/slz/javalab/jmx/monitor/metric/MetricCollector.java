@@ -33,13 +33,12 @@ public class MetricCollector {
 
   private final List<String> targets;
 
-
   @Autowired
   public MetricCollector(JmxConnManager jmxConnMngr) {
     this.jmxConnMngr = jmxConnMngr;
 
     this.targets = Arrays.asList(
-      "localhost"
+      "127.0.0.1:1099"
     );
   }
 
@@ -50,7 +49,7 @@ public class MetricCollector {
 
   @Scheduled(fixedRate = 30000L)
   public void collect() {
-    String target = "127.0.0.1:1099";
+    String target = targets.get(0);
     String[] targetComponents = target.split(":");
 
     String targetHost = targetComponents[0];
@@ -62,39 +61,55 @@ public class MetricCollector {
 
       logger.info("Connected to MBeanServer. ConnId: {}", jmxConn.getConnectionId());
 
-      try (BufferedWriter resWriter = openResultsWriter()) {
-        logger.debug("Reading IMap Metrics...");
+      MBeanMetricReader mReader = new HzIMapMetricReader();
 
-        MBeanMetricReader mReader = new HzIMapMetricReader();
-        List<MBeanRecord> metricsRead = mReader.read(mbsc);
-
-        if (metricsRead == null || metricsRead.size() == 0) {
-          logger.warn("IMap MBean. Ignored empty Metrics: {}", metricsRead);
-        }
-        else {
-          writeResultsHeaderRow(resWriter, metricsRead.get(0));
-
-          metricsRead.forEach(mBeanRecord ->
-            writeResultsRow(resWriter, mBeanRecord, "Node", "IMap"));
-
-          logger.info("IMap MBean. Metrics read: {}", metricsRead.size());
-        }
-      }
+      executeMetricReader(targetHost, mbsc, mReader);
     } catch (IOException e) {
       logger.error("IOError on JMX connection", e);
     }
   }
 
   /**
-   * Opens a properly configured writer to the results CSV file
-   * @return BufferedWriter for the results file
+   * Runs a metrics reader on the specified MBeanServerConnection and writes the results to the appropriate
+   * @param node Identifier of the node to take measurements on
+   * @param mbsc Read the metrics from this MBeanServerConnection
+   * @param mReader Metrics reader to be executed
    */
-  private BufferedWriter openResultsWriter() throws IOException {
-    Path resDir = Paths.get("logs");
-    Files.createDirectories(resDir);
+  private void executeMetricReader(String node, MBeanServerConnection mbsc, MBeanMetricReader mReader) {
+    logger.debug("Reading Metrics {}...", mReader);
 
-    return Files.newBufferedWriter(resDir.resolve("hz-map-metrics.csv"), StandardCharsets.UTF_8,
-      StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+    List<MBeanRecord> metricsRead = mReader.read(mbsc);
+
+    if (metricsRead == null || metricsRead.size() == 0) {
+      logger.warn("IMap MBean. Ignored empty Metrics: {}", metricsRead);
+      return;
+    }
+
+    String resultsFileName = mReader.getName() + ".csv";
+    Path resDir = Paths.get("logs");
+
+    try {
+      Files.createDirectories(resDir);
+    } catch (IOException e) {
+      logger.error("Error creating results directory " + resDir, e);
+    }
+
+    Path resultsFilePath = resDir.resolve(resultsFileName);
+    boolean isNewResultsFile = !Files.exists(resultsFilePath);
+
+    try (BufferedWriter resultsWriter = Files.newBufferedWriter(resultsFilePath,
+      StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+
+      if (isNewResultsFile) {
+        writeResultsHeaderRow(resultsWriter, metricsRead.get(0));
+      }
+
+      metricsRead.forEach(mBeanRecord -> writeResultsRow(resultsWriter, mBeanRecord, node));
+    } catch (IOException e) {
+      logger.error("Error writing results", e);
+    }
+
+    logger.info("IMap MBean. Metrics read: {}. ResultsFile: {}", metricsRead.size(), resultsFilePath);
   }
 
   /**
@@ -109,7 +124,6 @@ public class MetricCollector {
     try {
       writer.write("Time" + COLUMN_SEPARATOR);
       writer.write("Node" + COLUMN_SEPARATOR);
-      writer.write("Type" + COLUMN_SEPARATOR);
 
       for (AttributeMetric<?> metric : mBeanRecord.getAttributeMetrics()) {
         writer.write(metric.getName() + COLUMN_SEPARATOR);
@@ -126,16 +140,14 @@ public class MetricCollector {
    * @param writer The headers row will be written into this file writer
    * @param mBeanRecord A metrics record to be written, measured on a specific MBean
    * @param node ID of the node the metrics were measured at
-   * @param type Type of metrics recorded (usually part of the name of the MBean)
    */
-  private void writeResultsRow(BufferedWriter writer, MBeanRecord mBeanRecord, String node, String type) {
+  private void writeResultsRow(BufferedWriter writer, MBeanRecord mBeanRecord, String node) {
     Objects.requireNonNull(mBeanRecord);
     Objects.requireNonNull(mBeanRecord.getAttributeMetrics());
 
     try {
       writer.write(mBeanRecord.getTimestamp() + COLUMN_SEPARATOR);
       writer.write(node + COLUMN_SEPARATOR);
-      writer.write(type + COLUMN_SEPARATOR);
 
       for (AttributeMetric<?> metric : mBeanRecord.getAttributeMetrics()) {
         String valMark = String.class.equals(metric.getAttributeClass()) ? "\"" : "";

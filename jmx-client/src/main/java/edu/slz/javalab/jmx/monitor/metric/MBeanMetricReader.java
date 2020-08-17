@@ -6,6 +6,12 @@ import java.util.List;
 public interface MBeanMetricReader {
 
   /**
+   * Returns a textual identifier for the MBean read by this agent
+   * @return
+   */
+  String getName();
+
+  /**
    * Reads metrics from one or more of similar MBean Objects. Each implementation defines the metrics and
    * the type of MBean Objects to be read
    * @param mbsc MBeanServerConnection to the JMX process from which the metrics are to be read

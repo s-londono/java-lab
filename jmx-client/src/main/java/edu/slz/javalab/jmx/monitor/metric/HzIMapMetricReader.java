@@ -17,11 +17,11 @@ import java.util.stream.Collectors;
 public class HzIMapMetricReader implements MBeanMetricReader {
   private static final Logger logger = LoggerFactory.getLogger(HzIMapMetricReader.class);
 
-  /**
-   * Reads metrics from the MBean having the specified name
-   * @param mbsc MBeanServerConnection to the JMX process from which the metrics are to be read
-   * @return List of metrics read, with their values obtained from the corresponding MBean attributes
-   */
+  @Override
+  public String getName() {
+    return "HzIMap";
+  }
+
   @Override
   public List<MBeanRecord> read(MBeanServerConnection mbsc) {
     List<MBeanRecord> resultsMatrix = new ArrayList<>();
@@ -81,4 +81,8 @@ public class HzIMapMetricReader implements MBeanMetricReader {
     return metrics;
   }
 
+  @Override
+  public String toString() {
+    return getName();
+  }
 }
