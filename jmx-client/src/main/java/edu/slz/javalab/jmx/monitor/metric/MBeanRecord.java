@@ -1,17 +1,18 @@
 package edu.slz.javalab.jmx.monitor.metric;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 
 public class MBeanRecord {
 
   private String objectName;
 
-  private long timestamp;
+  private ZonedDateTime time;
 
   private List<AttributeMetric<?>> attributeMetrics;
 
-  public MBeanRecord(String objectName, long timestamp, List<AttributeMetric<?>> attributeMetrics) {
-    this.timestamp = timestamp;
+  public MBeanRecord(String objectName, ZonedDateTime time, List<AttributeMetric<?>> attributeMetrics) {
+    this.time = time;
     this.objectName = objectName;
     this.attributeMetrics = attributeMetrics;
   }
@@ -24,12 +25,12 @@ public class MBeanRecord {
     this.objectName = objectName;
   }
 
-  public long getTimestamp() {
-    return timestamp;
+  public ZonedDateTime getTime() {
+    return time;
   }
 
-  public void setTimestamp(long timestamp) {
-    this.timestamp = timestamp;
+  public void setTime(ZonedDateTime time) {
+    this.time = time;
   }
 
   public List<AttributeMetric<?>> getAttributeMetrics() {
@@ -44,7 +45,7 @@ public class MBeanRecord {
   public String toString() {
     return "MBeanRecord{" +
       "objectName='" + objectName + '\'' +
-      ", timestamp=" + timestamp +
+      ", time=" + time +
       ", attributeMetrics=" + (attributeMetrics != null ? attributeMetrics.size() : null) +
       '}';
   }

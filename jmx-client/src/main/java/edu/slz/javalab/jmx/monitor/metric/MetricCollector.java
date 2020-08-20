@@ -1,5 +1,6 @@
 package edu.slz.javalab.jmx.monitor.metric;
 
+import edu.slz.javalab.jmx.monitor.AppConfig;
 import edu.slz.javalab.jmx.monitor.JmxConnManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +18,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Objects;
 
@@ -34,12 +36,9 @@ public class MetricCollector {
   private final List<String> targets;
 
   @Autowired
-  public MetricCollector(JmxConnManager jmxConnMngr) {
+  public MetricCollector(AppConfig appConfig, JmxConnManager jmxConnMngr) {
     this.jmxConnMngr = jmxConnMngr;
-
-    this.targets = Arrays.asList(
-      "127.0.0.1:1099"
-    );
+    this.targets = appConfig.getTargets();
   }
 
   @PostConstruct
@@ -47,26 +46,28 @@ public class MetricCollector {
     logger.info("Starting up monitor");
   }
 
-  @Scheduled(fixedRate = 30000L)
+  @Scheduled(fixedDelay = 30000L)
   public void collect() {
-    String target = targets.get(0);
-    String[] targetComponents = target.split(":");
+    targets.forEach(target -> {
+      logger.info("Collecting metrics on: {}...", target);
 
-    String targetHost = targetComponents[0];
-    int targetPort = (targetComponents.length > 1) ? Integer.parseInt(targetComponents[1]) : DEFAULT_PORT;
+      String[] targetComponents = target.split(":");
+      String targetHost = targetComponents[0];
+      int targetPort = (targetComponents.length > 1) ? Integer.parseInt(targetComponents[1]) : DEFAULT_PORT;
 
-    try (JMXConnector jmxConn = jmxConnMngr.connectToRemote(targetHost, targetPort)) {
-      // Client is now connected to the MBean Server created by the JMX Agent, and can register MBeans and do operations
-      MBeanServerConnection mbsc = jmxConn.getMBeanServerConnection();
+      try (JMXConnector jmxConn = jmxConnMngr.connectToRemote(targetHost, targetPort)) {
+        // Client is now connected to the MBean Server created by the JMX Agent, and can register MBeans and do operations
+        MBeanServerConnection mbsc = jmxConn.getMBeanServerConnection();
 
-      logger.info("Connected to MBeanServer. ConnId: {}", jmxConn.getConnectionId());
+        logger.info("Connected to MBeanServer. ConnId: {}", jmxConn.getConnectionId());
 
-      MBeanMetricReader mReader = new HzIMapMetricReader();
+        MBeanMetricReader mReader = new HzIMapMetricReader();
 
-      executeMetricReader(targetHost, mbsc, mReader);
-    } catch (IOException e) {
-      logger.error("IOError on JMX connection", e);
-    }
+        executeMetricReader(targetHost, mbsc, mReader);
+      } catch (IOException e) {
+        logger.error("IOError on JMX connection", e);
+      }
+    });
   }
 
   /**
@@ -76,7 +77,7 @@ public class MetricCollector {
    * @param mReader Metrics reader to be executed
    */
   private void executeMetricReader(String node, MBeanServerConnection mbsc, MBeanMetricReader mReader) {
-    logger.debug("Reading Metrics {}...", mReader);
+    logger.info("Reading Metrics: {}. At: {}...", mReader, node);
 
     List<MBeanRecord> metricsRead = mReader.read(mbsc);
 
@@ -85,7 +86,8 @@ public class MetricCollector {
       return;
     }
 
-    String resultsFileName = mReader.getName() + ".csv";
+    String strDate = ZonedDateTime.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+    String resultsFileName = mReader.getName() + "-" + strDate + ".csv";
     Path resDir = Paths.get("logs");
 
     try {
@@ -146,7 +148,7 @@ public class MetricCollector {
     Objects.requireNonNull(mBeanRecord.getAttributeMetrics());
 
     try {
-      writer.write(mBeanRecord.getTimestamp() + COLUMN_SEPARATOR);
+      writer.write(mBeanRecord.getTime().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME) + COLUMN_SEPARATOR);
       writer.write(node + COLUMN_SEPARATOR);
 
       for (AttributeMetric<?> metric : mBeanRecord.getAttributeMetrics()) {

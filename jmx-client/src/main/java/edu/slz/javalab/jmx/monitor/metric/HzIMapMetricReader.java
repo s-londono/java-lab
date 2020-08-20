@@ -7,7 +7,7 @@ import javax.management.MBeanServerConnection;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 import java.io.IOException;
-import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -43,7 +43,7 @@ public class HzIMapMetricReader implements MBeanMetricReader {
 
     for (ObjectName mBeanObjName : sortedMBeanObjectNames) {
       List<AttributeMetric<?>> attributeMetrics = buildMetricsToRead();
-      long samplingStartedAt = Instant.now().toEpochMilli();
+      ZonedDateTime samplingStartedAt = ZonedDateTime.now();
 
       logger.debug("IMap MBean {}. Reading Metrics. At: {}...", mBeanObjName, samplingStartedAt);
 

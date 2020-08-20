@@ -1,9 +1,9 @@
 package edu.slz.javalab.jmx.monitor;
 
 import com.sun.istack.internal.NotNull;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @ConfigurationProperties(prefix = "jmxmonitor")
 public class AppConfig {
@@ -19,6 +19,9 @@ public class AppConfig {
 
   @NotNull
   private Boolean jmxremoteRegistrySsl;
+
+  @NotNull
+  private List<String> targets;
 
   public Boolean getJmxremoteAuthenticate() {
     return jmxremoteAuthenticate;
@@ -50,5 +53,13 @@ public class AppConfig {
 
   public void setJmxremoteRegistrySsl(Boolean jmxremoteRegistrySsl) {
     this.jmxremoteRegistrySsl = jmxremoteRegistrySsl;
+  }
+
+  public List<String> getTargets() {
+    return targets;
+  }
+
+  public void setTargets(List<String> targets) {
+    this.targets = targets;
   }
 }

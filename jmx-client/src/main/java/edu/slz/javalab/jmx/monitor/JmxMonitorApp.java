@@ -8,6 +8,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import java.util.Scanner;
+
 @SpringBootApplication
 @EnableScheduling
 @EnableConfigurationProperties(AppConfig.class)
@@ -29,10 +31,13 @@ public class JmxMonitorApp {
     ConfigurableApplicationContext appCtx = SpringApplication.run(JmxMonitorApp.class);
     logger.info("JmxMonitor starting up: {}...", appCtx.getApplicationName());
 
-    try {
-      Thread.sleep(130000L);
-    } catch (InterruptedException e) {
-      logger.error("Interrupted while sleeping", e);
+    try (Scanner in = new Scanner(System.in)) {
+      String option = null;
+
+      while (!"stop".equalsIgnoreCase(option)) {
+        System.out.println("\nPlease enter STOP to terminate the monitor: ");
+        option = in.nextLine().trim();
+      }
     }
 
     System.exit(0);
