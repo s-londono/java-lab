@@ -1,4 +1,4 @@
-## Spring Boot Application
+## Spring Boot Hazelcast Node
 
 To enable a Hazelcast Instance on a Spring Boot application:
 
@@ -70,3 +70,4 @@ public class ContextConfiguration {
 
 - [Spring Boot features: Hazelcast](https://docs.spring.io/spring-boot/docs/1.5.3.RELEASE/reference/html/boot-features-hazelcast.html)
 - [Enabling Hazelcast integration with Spring](https://docs.hazelcast.org/docs/latest/manual/html-single/#integration-with-spring)
+
