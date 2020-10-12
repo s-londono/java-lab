@@ -106,12 +106,6 @@ public class SpringBootAutoLoadedTest {
 }
 ```
 
-* It's also possible to specify an @ContextConfiguration on the test. In that case, the @SpringBootTest will not use the SpringApplication configuration to load the ApplicationContext.  This is equivalent to setting the classes attribute in @SpringBootTest to a class annotated with @Configuration (e.g. @SpringBootTest(classes={BotCoreService.class}))
-<!-- TODO: Validate this claim. See example at bot-core.BotPingCommandTest -->
-
-* The annotation @Import can be used in @TestConfiguration annotated classes to load additional  configurations in the ApplicationContext of the test.
-<!-- TODO: Add example -->
-
 * Use the @MockBean annotation to define mocks of beans to be used in the test. Is enabled by default in Spring Boot Tests (those that use annotations such as @SpringBootTest), otherwise can be enabled manually by adding the listener: @TestExecutionListeners(MockitoTestExecutionListener.class).
 <!-- TODO: Add examples, putting @MockBean on attributes, @Configuration classes and Test Classes -->
 
@@ -143,6 +137,14 @@ public static class TestAppCtxConfig {
   public FbMessageBuilder fbMsgBuilder;
 }
 ```
+
+* It's also possible to specify an @ContextConfiguration on the test. In that case, the @SpringBootTest will not use the SpringApplication configuration to load the ApplicationContext.  This is equivalent to setting the classes attribute in @SpringBootTest to a class annotated with @Configuration (e.g. @SpringBootTest(classes={BotCoreService.class}))
+<!-- TODO: Validate this claim. See example at bot-core.BotPingCommandTest -->
+
+* The annotation @Import can be used in @TestConfiguration annotated classes to load additional configurations in the ApplicationContext of the test.
+<!-- TODO: Add example -->
+
+
 ## Transactions
 https://docs.spring.io/spring/docs/5.0.9.RELEASE/spring-framework-reference/testing.html#testcontext-tx-enabling-transactions
 
@@ -150,7 +152,7 @@ Annotating a test method with @Transactional causes the test to be run within a 
 
 https://docs.spring.io/spring-boot/docs/current/reference/html/boot-features-testing.html#boot-features-testing-spring-boot-applications
 
-If your test is @Transactional, it rolls back the transaction at the end of each test method by default. However, as using this arrangement with either RANDOM_PORT or DEFINED_PORT implicitly provides a real servlet environment, the HTTP client and server run in separate threads and, thus, in separate transactions. Any transaction initiated on the server does not roll back in this case.
+If your test class is @Transactional, it rolls back the transaction at the end of each test method by default. However, as using this arrangement with either RANDOM_PORT or DEFINED_PORT implicitly provides a real servlet environment, the HTTP client and server run in separate threads and, thus, in separate transactions. Any transaction initiated on the server does not roll back in this case.
 
 In case the test transaction should be committed in a Transactional method or class, add the following as first line of the method:
 
@@ -264,6 +266,63 @@ public class StandardServiceServiceImplTest {
 }
 ```
 
+```java
+@RunWith(SpringRunner.class)
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.NONE)
+@ActiveProfiles({"local"})
+public class FaqsReorderServiceTest {
+  private static final Logger logger = LoggerFactory.getLogger(FaqsReorderServiceTest.class);
+
+  @MockBean
+  private FaqRepositoryImpl faqsRepo;
+
+  @Before
+  public void setup() {
+    Mockito
+      .when(faqsRepo.listFaqQuestionsByBotIdWithAns(1))
+      .thenReturn(this.buildSequentialDummyFaqsList());
+  }
+
+  @Test
+  public void testReorderFaqsWithNullOrderProps() {
+    Mockito
+      .when(faqsRepo.updateFaqQuestion(Mockito.isA(FaqQuestion.class)))
+      .thenAnswer((Answer<Integer>) invocation -> invocation.getArgumentAt(0, FaqQuestion.class).getId());
+  }
+
+  @Test
+  public void testUpdateFaqQuestionOrder() {
+    logger.info("Testing update FAQQuestionOrderService...");
+
+    Assert.notNull("OK");
+  }
+
+  private List<FaqQuestion> buildSequentialDummyFaqsList() {
+    List<FaqQuestion> faqs = new ArrayList<>();
+
+    for (int i = 0; i < 5; i++) {
+      FaqQuestion curFaq = new FaqQuestion();
+      curFaq.setId(100 + i);
+      curFaq.setOrder(i + 1);
+      curFaq.setBody(String.format("FAQ #%d", i + 1));
+      faqs.add(curFaq);
+    }
+
+    return faqs;
+  }
+
+  // Define a particular Application Context for this test
+  @Configuration
+  public static class AppCtxConfig {
+
+    @Bean
+    public FaqsReorderService faqsReorderService(FaqRepository faqRepository) {
+      return new FaqsReorderServiceImpl(faqRepository);
+    }
+  }
+}
+```
+
 -- TODO: Add documentation about Mockito -------------------------------------------------------------------------------
 https://www.baeldung.com/java-spring-mockito-mock-mockbean
 
@@ -280,8 +339,6 @@ botbackoffice com.vertical.bot.backoffice.domain.service.impl.UserStateServiceIm
 ------------------------------------------------------------------------------------------------------------------------
 
 
-
-
 ## References
 
 https://docs.spring.io/spring-boot/docs/current/reference/html/boot-features-testing.html
@@ -293,4 +350,3 @@ https://dzone.com/articles/spring-boot-unit-testing-and-mocking-with-mockito
 https://dzone.com/articles/unit-and-integration-tests-in-spring-boot-2
 
 https://www.baeldung.com/mockito-mock-methods
-

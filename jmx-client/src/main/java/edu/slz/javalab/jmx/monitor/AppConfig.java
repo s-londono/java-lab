@@ -1,8 +1,8 @@
 package edu.slz.javalab.jmx.monitor;
 
-import com.sun.istack.internal.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import javax.validation.constraints.NotNull;
 import java.util.List;
 
 @ConfigurationProperties(prefix = "jmxmonitor")

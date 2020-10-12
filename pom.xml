@@ -18,5 +18,6 @@
   </dependencies>
   <modules>
     <module>jmx-client</module>
+    <module>springwebapp</module>
   </modules>
 </project>
