@@ -36,6 +36,10 @@ spring:
     static-locations: "file://@project.basedir@/src/main/resources/static/"
 ```
 
+### Example projects
+
+- [Scalable Webapp](https://github.com/s-londono/scalable-webapp)
+
 ### References
 
 - [Spring Boot - Integrating Static Content](https://www.springboottutorial.com/spring-boot-with-static-content-css-and-javascript-js)
