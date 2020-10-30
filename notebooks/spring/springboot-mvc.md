@@ -45,3 +45,5 @@ spring:
 - [Spring Boot - Integrating Static Content](https://www.springboottutorial.com/spring-boot-with-static-content-css-and-javascript-js)
 - [Accessing Spring MVC Model Objects in JS](https://www.baeldung.com/spring-mvc-model-objects-js)
 - [Spring MVC - Add JS, CSS and images into JSP file using mvc:resources mapping](https://crunchify.com/spring-mvc-4-2-2-best-way-to-integrate-js-and-css-file-in-jsp-file-using-mvcresources-mapping/)
+
+
