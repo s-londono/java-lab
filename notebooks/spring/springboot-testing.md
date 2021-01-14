@@ -338,6 +338,30 @@ botbackoffice com.vertical.bot.backoffice.service.impl.StandardServiceServiceImp
 botbackoffice com.vertical.bot.backoffice.domain.service.impl.UserStateServiceImplTest
 ------------------------------------------------------------------------------------------------------------------------
 
+------------------------------------------------------------------------------------------------------------------------
+How to Mock the DB?
+
+https://stackoverflow.com/questions/35707469/how-can-i-mock-db-connection-in-spring-boot-for-testing-purpose
+
+```java
+@Configuration
+public class TestingDataSourceConfig {
+
+    @Bean
+    @Primary
+    public DataSource dataSource() {
+        return new EmbeddedDatabaseBuilder()
+            .generateUniqueName(true)
+            .setType(H2)
+            .setScriptEncoding("UTF-8")
+            .ignoreFailedDrops(true)
+            .addScript("schema.sql")
+            .addScripts("user_data.sql", "country_data.sql")
+            .build();
+    }
+}
+```
+
 
 ## References
 
