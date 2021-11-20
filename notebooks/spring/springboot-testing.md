@@ -62,6 +62,7 @@ public class SpringBootAutoLoadedTest {
 ## Customizing and extending test ApplicationContext
 
 * To define use a custom Application Context configuration from scratch, add a nested @Configuration class to the test. Spring Boot Test will use this @Configuration class to load the ApplicationContext instead of the project's SpringApplication. That is, a nested @Configuration *overrides* the default Application Context configuration of Spring Boot Tests.
+* For Spring Boot projects consider using *@SpringConfiguration* instead. This is required for example, to enabled MyBatis auto-configuration.
 
 ```java
 @RunWith(SpringRunner.class)
@@ -73,7 +74,34 @@ public class SpringBootManuallyLoadedTest {
   public static class ManualTestConfig {
     // Bean definitions...
   }
+}
+```
 
+* Note that when overriding the Application Context configuration as shown above, it is necessary to explicitly enable properties if we want any @ConfigurationProperties annotation to be processed. For example, if we have bean containing properties such as:
+
+```java
+@Component
+@ConfigurationProperties(prefix = "hazelcast.client")
+public class HazelcastClientProperties {
+
+  @NotNull
+  private List<String> bindAddress;
+  ...
+}
+```
+
+Our custom configuration should be as follows, in order to automatically load its property values:
+
+```java
+  ...
+  @Configuration
+  @EnableConfigurationProperties
+  public static class ManualTestConfig {
+    @Bean
+    public HazelcastClientProperties hazelcastClientProperties() {
+      return new HazelcastClientProperties();
+    }
+  }
 }
 ```
 
@@ -106,7 +134,7 @@ public class SpringBootAutoLoadedTest {
 }
 ```
 
-* Use the @MockBean annotation to define mocks of beans to be used in the test. Is enabled by default in Spring Boot Tests (those that use annotations such as @SpringBootTest), otherwise can be enabled manually by adding the listener: @TestExecutionListeners(MockitoTestExecutionListener.class).
+* Use the @MockBean annotation to define mocks of beans to be used in the test. These mock beans are added to the Spring Application Context. The mock will replace any existing bean of the same type in the application context. This annotation is useful in integration tests where a particular bean (for example, an external service) needs to be mocked. It is enabled by default in Spring Boot Tests (those that use annotations such as @SpringBootTest), otherwise can be enabled manually by adding the listener: @TestExecutionListeners(MockitoTestExecutionListener.class). 
 <!-- TODO: Add examples, putting @MockBean on attributes, @Configuration classes and Test Classes -->
 
 ```java
@@ -374,3 +402,6 @@ https://dzone.com/articles/spring-boot-unit-testing-and-mocking-with-mockito
 https://dzone.com/articles/unit-and-integration-tests-in-spring-boot-2
 
 https://www.baeldung.com/mockito-mock-methods
+
+https://www.baeldung.com/java-spring-mockito-mock-mockbean
+

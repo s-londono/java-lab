@@ -34,7 +34,7 @@ public static void main(String[] args) {
       }
     }));
 
-    ConfigurableApplicationContext appCtx =HE SpringApplication.run(JmxMonitorApp.class);
+    ConfigurableApplicationContext appCtx = SpringApplication.run(JmxMonitorApp.class);
     logger.info("JmxMonitor starting up: {}...", appCtx.getApplicationName());
 
     System.exit(0);

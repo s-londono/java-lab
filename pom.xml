@@ -23,5 +23,6 @@
   <modules>
     <module>jmx-client</module>
     <module>springwebapp</module>
+    <module>threading</module>
   </modules>
 </project>
