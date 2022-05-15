@@ -8,6 +8,24 @@ jmxmonitor:
 
 ---
 spring:
+  profiles: test
+
+jmxmonitor:
+  targets:
+    - "172.31.16.100:1099"
+    - "172.31.16.101:1099"
+
+---
+spring:
+  profiles: develop
+
+jmxmonitor:
+  targets:
+    - "172.31.80.100:1099"
+    - "172.31.80.101:1099"
+
+---
+spring:
   profiles: production
 
 jmxmonitor:
